@@ -1,0 +1,30 @@
+# ── Core ──────────────────────────────────────────────
+pandas>=2.1
+numpy>=1.26
+scikit-learn>=1.4
+
+# ── Collaborative Filtering (Phase 2) ─────────────────
+scikit-surprise>=1.1.3
+
+# ── NLP / Sentiment (Phase 5) ─────────────────────────
+vaderSentiment>=3.3.2
+transformers>=4.40          # DistilBERT
+torch>=2.2                  # CPU build is fine for inference
+
+# ── Explainability (Phase 6) ──────────────────────────
+lime>=0.2.0.1
+
+# ── API (Phase 7) ─────────────────────────────────────
+fastapi>=0.111
+uvicorn[standard]>=0.29
+
+# ── Dashboard (Phase 7) ───────────────────────────────
+streamlit>=1.35
+plotly>=5.22
+
+# ── Experiment Tracking ───────────────────────────────
+mlflow>=2.13
+
+# ── Dev / Notebook ────────────────────────────────────
+jupyter>=1.0
+matplotlib>=3.8
