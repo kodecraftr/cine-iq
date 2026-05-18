@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Data and model artifacts
+data/raw/
+data/processed/
+models/saved/
+mlruns/
+mlartifacts/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Generated local files
+*.log
+.DS_Store
+Thumbs.db
+
