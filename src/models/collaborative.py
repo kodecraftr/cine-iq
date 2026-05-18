@@ -202,7 +202,7 @@ class CollaborativeFilter:
         """
         if self.model is None:
             raise RuntimeError("Model not trained. Call .train() or .load() first.")
-        pred = self.model.predict(uid=str(user_id), iid=str(movie_id))
+        pred = self.model.predict(uid=user_id, iid=movie_id)
         return round(pred.est, 4)
 
     def top_n(self, user_id: int, n: int = 10) -> pd.DataFrame:
@@ -219,7 +219,12 @@ class CollaborativeFilter:
         if self.model is None or self.trainset is None:
             raise RuntimeError("Model not trained. Call .train() or .load() first.")
 
-        uid_inner = self.trainset.to_inner_uid(str(user_id))
+        raw_user_id = user_id
+        try:
+            uid_inner = self.trainset.to_inner_uid(raw_user_id)
+        except ValueError:
+            raw_user_id = str(user_id)
+            uid_inner = self.trainset.to_inner_uid(raw_user_id)
 
         # movies already rated by this user (inner ids)
         rated_inner = set(iid for (iid, _) in self.trainset.ur[uid_inner])
@@ -229,7 +234,7 @@ class CollaborativeFilter:
 
         # anti-test set: movies not yet rated
         anti_testset = [
-            (str(user_id), self.trainset.to_raw_iid(iid), 0)   # (uid, iid, placeholder_rating)
+            (raw_user_id, self.trainset.to_raw_iid(iid), 0)   # (uid, iid, placeholder_rating)
             for iid in all_items - rated_inner
         ]
 
