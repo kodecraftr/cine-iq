@@ -1,6 +1,6 @@
 # ── Core ──────────────────────────────────────────────
 pandas>=2.1
-numpy>=1.26
+numpy>=1.26,<2
 scikit-learn>=1.4
 
 # ── Collaborative Filtering (Phase 2) ─────────────────
