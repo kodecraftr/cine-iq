@@ -20,3 +20,4 @@ mlartifacts/
 .DS_Store
 Thumbs.db
 SUBMISSION_CHECKLIST.md
+scripts/generate_report_pdf.py
