@@ -30,50 +30,183 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 1.5rem; }
-    .app-title { font-size: 2.25rem; font-weight: 800; margin-bottom: 0.1rem; }
-    .muted { color: #667085; }
+    :root {
+        --ink: #17212b;
+        --muted: #667085;
+        --paper: #fffaf0;
+        --surface: #ffffff;
+        --line: #d9ded8;
+        --teal: #2d6a6a;
+        --teal-dark: #1f4f4f;
+        --gold: #c58a2c;
+        --coral: #b85c4b;
+        --blue: #315d86;
+    }
+    .stApp {
+        background:
+            linear-gradient(180deg, rgba(45, 106, 106, 0.10), rgba(247, 243, 234, 0) 260px),
+            var(--paper);
+        color: var(--ink);
+    }
+    section[data-testid="stSidebar"] {
+        background: #18242f;
+        border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    section[data-testid="stSidebar"] * {
+        color: #f8fafc !important;
+    }
+    section[data-testid="stSidebar"] .stCaption,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p {
+        color: #b7c3cf !important;
+    }
+    .block-container {
+        max-width: 1280px;
+        padding-top: 1.2rem;
+        padding-bottom: 2.5rem;
+    }
+    header[data-testid="stHeader"] { background: transparent; }
+    [data-testid="stToolbar"] { visibility: hidden; }
+    .app-title {
+        color: var(--ink);
+        font-size: 2.4rem;
+        font-weight: 850;
+        letter-spacing: 0;
+        margin-bottom: 0.1rem;
+    }
+    .muted { color: var(--muted); }
+    .hero {
+        border: 1px solid rgba(45, 106, 106, 0.18);
+        border-radius: 10px;
+        background: linear-gradient(135deg, #ffffff 0%, #f1f7f4 58%, #fff3dc 100%);
+        padding: 1.2rem 1.35rem;
+        margin: 0.8rem 0 1.2rem 0;
+        box-shadow: 0 16px 36px rgba(23, 33, 43, 0.08);
+    }
+    .hero-eyebrow {
+        color: var(--teal-dark);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        font-weight: 800;
+        letter-spacing: 0.08rem;
+        margin-bottom: 0.35rem;
+    }
+    .hero-title {
+        color: var(--ink);
+        font-size: 1.45rem;
+        font-weight: 800;
+        margin-bottom: 0.2rem;
+    }
+    .hero-copy {
+        color: #425466;
+        font-size: 0.98rem;
+        margin: 0;
+    }
+    .stat-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.75rem;
+        margin: 0.95rem 0 0.2rem 0;
+    }
+    .stat-card {
+        border: 1px solid rgba(45, 106, 106, 0.16);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.82);
+        padding: 0.75rem 0.85rem;
+    }
+    .stat-label {
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04rem;
+    }
+    .stat-value {
+        color: var(--ink);
+        font-size: 1.15rem;
+        font-weight: 800;
+        margin-top: 0.1rem;
+    }
+    h2, h3 {
+        color: var(--ink) !important;
+        letter-spacing: 0;
+    }
+    h3 {
+        margin-top: 1.1rem !important;
+    }
     .pill {
         display: inline-block;
-        padding: 0.2rem 0.55rem;
+        padding: 0.22rem 0.55rem;
         border-radius: 999px;
-        background: #eef2f6;
-        color: #344054;
+        background: #edf4f1;
+        color: var(--teal-dark);
         font-size: 0.78rem;
+        font-weight: 650;
         margin: 0.12rem 0.12rem 0.12rem 0;
     }
     .movie-card {
-        border: 1px solid #e4e7ec;
+        border: 1px solid var(--line);
         border-radius: 8px;
-        padding: 1rem;
-        background: #ffffff;
-        min-height: 230px;
-        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+        padding: 1.05rem;
+        background: var(--surface);
+        min-height: 250px;
+        box-shadow: 0 12px 28px rgba(23, 33, 43, 0.07);
+        border-top: 4px solid var(--teal);
     }
-    .movie-title { font-size: 1.08rem; font-weight: 750; margin-bottom: 0.15rem; }
-    .movie-meta { color: #667085; font-size: 0.9rem; margin-bottom: 0.65rem; }
-    .score-line { font-size: 0.9rem; color: #344054; margin-top: 0.35rem; }
+    .card-grid .movie-card:nth-child(3n+2) { border-top-color: var(--gold); }
+    .card-grid .movie-card:nth-child(3n+3) { border-top-color: var(--blue); }
+    .movie-title {
+        color: var(--ink);
+        font-size: 1.08rem;
+        font-weight: 800;
+        margin-bottom: 0.15rem;
+    }
+    .movie-meta {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-bottom: 0.7rem;
+    }
+    .score-line {
+        font-size: 0.92rem;
+        color: #344054;
+        margin-top: 0.38rem;
+    }
     .reason-box {
-        border-left: 3px solid #2e90fa;
+        border-left: 3px solid var(--teal);
         padding-left: 0.7rem;
         color: #344054;
         font-size: 0.92rem;
         margin-top: 0.75rem;
+        line-height: 1.5;
     }
     .watch-card {
-        border: 1px solid #e4e7ec;
+        border: 1px solid var(--line);
         border-radius: 8px;
         padding: 0.75rem;
-        background: #fcfcfd;
-        min-height: 112px;
+        background: #ffffff;
+        min-height: 120px;
+        box-shadow: 0 8px 22px rgba(23, 33, 43, 0.05);
+    }
+    .watch-card .movie-title {
+        color: var(--ink);
     }
     .section-label {
-        color: #475467;
+        color: var(--coral);
         font-size: 0.78rem;
         text-transform: uppercase;
-        letter-spacing: 0.04rem;
-        font-weight: 700;
+        letter-spacing: 0.06rem;
+        font-weight: 800;
         margin-bottom: 0.35rem;
+    }
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 0.75rem;
+        margin: 0.35rem 0 1.15rem 0;
+    }
+    .stDataFrame, div[data-testid="stPlotlyChart"] {
+        background: #ffffff;
+        border-radius: 8px;
     }
     </style>
     """,
@@ -147,45 +280,41 @@ def movie_tags(row: pd.Series, limit: int = 3) -> str:
 
 
 def render_watch_shelf(watchlist: pd.DataFrame):
-    cols = st.columns(3)
-    for idx, (_, row) in enumerate(watchlist.iterrows()):
-        with cols[idx % 3]:
-            year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
-            rating = row.get("rating", 0)
-            st.markdown(
-                f"""
-                <div class="watch-card">
-                    <div class="movie-title">{row.get("title", "Unknown")}</div>
-                    <div class="movie-meta">{year} · rated {rating:.1f}/5</div>
-                    {movie_tags(row)}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    cards = ['<div class="card-grid">']
+    for _, row in watchlist.iterrows():
+        year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
+        rating = row.get("rating", 0)
+        cards.append(
+            f'<div class="watch-card">'
+            f'<div class="movie-title">{row.get("title", "Unknown")}</div>'
+            f'<div class="movie-meta">{year} &middot; rated {rating:.1f}/5</div>'
+            f'{movie_tags(row)}'
+            f'</div>'
+        )
+    cards.append("</div>")
+    st.markdown("".join(cards), unsafe_allow_html=True)
 
 
 def recommendation_cards(recs: pd.DataFrame):
-    cols = st.columns(3)
+    cards = ['<div class="card-grid">']
     for idx, (_, row) in enumerate(recs.iterrows()):
-        with cols[idx % 3]:
-            year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
-            vote = row.get("vote_average", 0)
-            score = row.get("final_score", row.get("hybrid_score", 0))
-            sentiment = row.get("sentiment_score", 0)
-            explanation = row.get("explanation", "Recommended from this profile's watch history.")
-            st.markdown(
-                f"""
-                <div class="movie-card">
-                    <div class="section-label">Pick #{int(row.get("rank", idx + 1))}</div>
-                    <div class="movie-title">{row.get("title", "Unknown")}</div>
-                    <div class="movie-meta">{year} · audience score {vote}</div>
-                    <div class="score-line">Match score: <b>{score:.3f}</b></div>
-                    <div class="score-line">Audience signal: <b>{sentiment:+.3f}</b></div>
-                    <div class="reason-box">{explanation}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
+        vote = row.get("vote_average", 0)
+        score = row.get("final_score", row.get("hybrid_score", 0))
+        sentiment = row.get("sentiment_score", 0)
+        explanation = row.get("explanation", "Recommended from this profile's watch history.")
+        cards.append(
+            f'<div class="movie-card">'
+            f'<div class="section-label">Pick #{int(row.get("rank", idx + 1))}</div>'
+            f'<div class="movie-title">{row.get("title", "Unknown")}</div>'
+            f'<div class="movie-meta">{year} &middot; audience score {vote}</div>'
+            f'<div class="score-line">Match score: <b>{score:.3f}</b></div>'
+            f'<div class="score-line">Audience signal: <b>{sentiment:+.3f}</b></div>'
+            f'<div class="reason-box">{explanation}</div>'
+            f'</div>'
+        )
+    cards.append("</div>")
+    st.markdown("".join(cards), unsafe_allow_html=True)
 
 
 def generate_recommendations(models: dict, profile: dict, n_recs: int, alpha: float, gamma: float) -> pd.DataFrame:
@@ -235,6 +364,33 @@ gamma = st.sidebar.slider("Audience sentiment boost", 0.0, 0.5, 0.15, 0.05)
 st.markdown('<div class="app-title">Cine IQ</div>', unsafe_allow_html=True)
 st.markdown(
     f'<p class="muted">Now watching as <b>{profile["name"]}</b> · {profile["taste"]}</p>',
+    unsafe_allow_html=True,
+)
+
+profile_watch_count = len(ratings_df[ratings_df["userId"] == profile["user_id"]])
+profile_avg = ratings_df[ratings_df["userId"] == profile["user_id"]]["rating"].mean()
+st.markdown(
+    f"""
+    <div class="hero">
+        <div class="hero-eyebrow">Personalized discovery</div>
+        <div class="hero-title">A watchlist-first recommender for {profile["name"]}</div>
+        <p class="hero-copy">Cine IQ blends rating patterns, movie metadata, and audience sentiment to recommend what should feel natural to watch next.</p>
+        <div class="stat-strip">
+            <div class="stat-card">
+                <div class="stat-label">Profile</div>
+                <div class="stat-value">{profile["name"]}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Watched titles</div>
+                <div class="stat-value">{profile_watch_count}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Average rating</div>
+                <div class="stat-value">{profile_avg:.2f}/5</div>
+            </div>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
