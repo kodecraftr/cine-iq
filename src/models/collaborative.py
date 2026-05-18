@@ -74,6 +74,9 @@ class CollaborativeFilter:
         """
         log.info("Loading ratings …")
         ratings = pd.read_csv(RATINGS_PATH)
+        self.movie_map = pd.read_csv(MOVIES_PATH, usecols=["movieId", "title"]).drop_duplicates("movieId")
+        catalog_ids = set(self.movie_map["movieId"].astype(int))
+        ratings = ratings[ratings["movieId"].isin(catalog_ids)].copy()
 
         if sample_frac < 1.0:
             ratings = ratings.sample(frac=sample_frac, random_state=42)
@@ -84,9 +87,6 @@ class CollaborativeFilter:
         # Surprise needs to know the rating scale
         reader  = Reader(rating_scale=(ratings["rating"].min(), ratings["rating"].max()))
         dataset = Dataset.load_from_df(ratings[["userId", "movieId", "rating"]], reader)
-
-        # load movie titles for display
-        self.movie_map = pd.read_csv(MOVIES_PATH, usecols=["movieId", "title"]).drop_duplicates("movieId")
 
         return dataset, ratings
 

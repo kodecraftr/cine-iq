@@ -277,6 +277,9 @@ def save_outputs(
     if sentiment is not None:
         sentiment.to_csv(sentiment_out, index=False)
         log.info(f"Saved → {sentiment_out}")
+    elif sentiment_out.exists():
+        sentiment_out.unlink()
+        log.info(f"Removed stale sentiment file -> {sentiment_out}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -297,6 +300,8 @@ def run_pipeline(
     tmdb               = load_tmdb()
     merged             = merge_movielens_tmdb(ml_movies, tmdb)
     merged             = build_soup(merged)
+    ratings            = ratings[ratings["movieId"].isin(set(merged["movieId"].astype(int)))].copy()
+    log.info(f"Filtered ratings to app catalog: {len(ratings):,} rows")
     sentiment          = compute_sentiment_scores()
     save_outputs(merged, ratings, sentiment)
 

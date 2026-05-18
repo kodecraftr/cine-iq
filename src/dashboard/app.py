@@ -234,6 +234,7 @@ def load_data():
     processed = Path(__file__).resolve().parents[2] / "data" / "processed"
     movies = pd.read_csv(processed / "movies_merged.csv")
     ratings = pd.read_csv(processed / "ratings_clean.csv")
+    ratings = ratings[ratings["movieId"].isin(set(movies["movieId"].astype(int)))].copy()
     return movies, ratings
 
 
@@ -267,9 +268,9 @@ def build_profiles(ratings: pd.DataFrame) -> list[dict]:
 def profile_watchlist(profile: dict, movies: pd.DataFrame, ratings: pd.DataFrame, limit: int = 6) -> pd.DataFrame:
     user_ratings = ratings[ratings["userId"] == profile["user_id"]]
     watchlist = (
-        user_ratings.sort_values("rating", ascending=False)
+        user_ratings.merge(movies, on="movieId", how="inner")
+        .sort_values("rating", ascending=False)
         .head(limit)
-        .merge(movies, on="movieId", how="left")
     )
     return watchlist
 
@@ -302,6 +303,11 @@ def recommendation_cards(recs: pd.DataFrame):
         vote = row.get("vote_average", 0)
         score = row.get("final_score", row.get("hybrid_score", 0))
         sentiment = row.get("sentiment_score", 0)
+        sentiment_text = (
+            f"<b>{sentiment:+.3f}</b>"
+            if bool(row.get("sentiment_available", False))
+            else "<b>not linked</b>"
+        )
         explanation = row.get("explanation", "Recommended from this profile's watch history.")
         cards.append(
             f'<div class="movie-card">'
@@ -309,7 +315,7 @@ def recommendation_cards(recs: pd.DataFrame):
             f'<div class="movie-title">{row.get("title", "Unknown")}</div>'
             f'<div class="movie-meta">{year} &middot; audience score {vote}</div>'
             f'<div class="score-line">Match score: <b>{score:.3f}</b></div>'
-            f'<div class="score-line">Audience signal: <b>{sentiment:+.3f}</b></div>'
+            f'<div class="score-line">Audience signal: {sentiment_text}</div>'
             f'<div class="reason-box">{explanation}</div>'
             f'</div>'
         )
@@ -326,6 +332,7 @@ def generate_recommendations(models: dict, profile: dict, n_recs: int, alpha: fl
     reranker = models["sentiment"]
     reranker.gamma = gamma
     recs = reranker.rerank(recs).head(n_recs)
+    recs["sentiment_available"] = reranker._scores is not None
     return models["explainer"].explain_batch(profile["user_id"], recs)
 
 
