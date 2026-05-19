@@ -432,7 +432,6 @@ def movie_review_stats(movie_id: int) -> tuple[pd.DataFrame, float | None]:
 
 def set_movie_page(movie_id: int) -> None:
     st.session_state["selected_movie_id"] = int(movie_id)
-    st.session_state["page"] = "Search"
     st.rerun()
 
 
