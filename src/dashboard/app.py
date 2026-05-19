@@ -11,6 +11,7 @@ Run
 import ast
 import sys
 from pathlib import Path
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "models"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "explainability"))
@@ -19,6 +20,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+
+ROOT = Path(__file__).resolve().parents[2]
+PROCESSED = ROOT / "data" / "processed"
+USER_REVIEWS_CSV = PROCESSED / "user_reviews.csv"
+SENTIMENT_SCORES_CSV = PROCESSED / "sentiment_scores.csv"
 
 
 st.set_page_config(
@@ -287,6 +293,67 @@ def movie_tags(row: pd.Series, limit: int = 3) -> str:
     return "".join(f'<span class="pill">{genre}</span>' for genre in genres)
 
 
+def load_user_reviews() -> pd.DataFrame:
+    columns = [
+        "timestamp",
+        "movieId",
+        "title",
+        "review",
+        "sentiment_label",
+        "sentiment_score",
+        "confidence",
+    ]
+    if USER_REVIEWS_CSV.exists():
+        return pd.read_csv(USER_REVIEWS_CSV)
+    return pd.DataFrame(columns=columns)
+
+
+def save_user_review(movie: pd.Series, review_text: str, prediction: dict) -> None:
+    USER_REVIEWS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    sentiment_score = (
+        prediction["positive_probability"]
+        if prediction["label"] == "positive"
+        else -prediction["negative_probability"]
+    )
+    row = pd.DataFrame(
+        [
+            {
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "movieId": int(movie["movieId"]),
+                "title": movie.get("title", "Unknown"),
+                "review": review_text,
+                "sentiment_label": prediction["label"],
+                "sentiment_score": sentiment_score,
+                "confidence": prediction["confidence"],
+            }
+        ]
+    )
+    existing = load_user_reviews()
+    pd.concat([existing, row], ignore_index=True).to_csv(USER_REVIEWS_CSV, index=False)
+    update_sentiment_scores()
+
+
+def update_sentiment_scores() -> pd.DataFrame:
+    reviews = load_user_reviews()
+    if reviews.empty:
+        if SENTIMENT_SCORES_CSV.exists():
+            SENTIMENT_SCORES_CSV.unlink()
+        return pd.DataFrame(columns=["movieId", "sentiment_score", "review_count"])
+
+    scores = (
+        reviews.groupby("movieId", as_index=False)
+        .agg(sentiment_score=("sentiment_score", "mean"), review_count=("review", "count"))
+    )
+    scores.to_csv(SENTIMENT_SCORES_CSV, index=False)
+    return scores
+
+
+def refresh_sentiment_reranker(models: dict, gamma: float) -> None:
+    from sentiment import SentimentReRanker
+
+    models["sentiment"] = SentimentReRanker(backend="vader", gamma=gamma)
+
+
 def render_watch_shelf(watchlist: pd.DataFrame):
     cards = ['<div class="card-grid">']
     for _, row in watchlist.iterrows():
@@ -366,7 +433,7 @@ st.sidebar.caption(profile["taste"])
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Browse",
-    ["For You", "Discover Similar", "Review Sentiment", "Taste Profile"],
+    ["For You", "Discover Similar", "Review a Movie", "Taste Profile"],
 )
 
 st.sidebar.markdown("---")
@@ -482,35 +549,51 @@ elif page == "Discover Similar":
     )
 
 
-elif page == "Review Sentiment":
-    st.subheader("Classify a movie review")
-    st.caption("Paste a review and Cine IQ will predict whether it reads positive or negative.")
+elif page == "Review a Movie":
+    st.subheader("Leave a movie review")
+    st.caption("Cine IQ classifies the review and folds it into that movie's average audience sentiment.")
 
-    sample_review = (
-        "The performances were excellent and the story stayed with me after the credits. "
-        "It is a thoughtful, beautifully made film."
-    )
+    all_titles = movies_df["title"].dropna().sort_values().unique().tolist()
+    selected_title = st.selectbox("Movie", all_titles)
+    selected_movie = movies_df[movies_df["title"] == selected_title].iloc[0]
+
+    existing_reviews = load_user_reviews()
+    movie_reviews = existing_reviews[existing_reviews["movieId"] == int(selected_movie["movieId"])]
+
+    if not movie_reviews.empty:
+        avg_sentiment = movie_reviews["sentiment_score"].mean()
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Submitted reviews", len(movie_reviews))
+        metric_cols[1].metric("Average sentiment", f"{avg_sentiment:+.3f}")
+        metric_cols[2].metric("Latest label", str(movie_reviews.iloc[-1]["sentiment_label"]).title())
+    else:
+        st.info("No user reviews have been submitted for this movie yet.")
+
     review_text = st.text_area(
-        "Review text",
-        value=sample_review,
+        "Your review",
         height=180,
-        placeholder="Write or paste a movie review...",
+        placeholder="Write a real audience review for this selected movie...",
     )
 
     classifier = models.get("review_classifier")
     if classifier is None:
         st.warning("Review sentiment model is not trained yet. Run: python src/models/sentiment.py --train-review-classifier")
-    elif st.button("Analyze review", type="primary"):
+    elif st.button("Submit review", type="primary", disabled=not review_text.strip()):
         result = classifier.predict(review_text)
+        save_user_review(selected_movie, review_text.strip(), result)
+        refresh_sentiment_reranker(models, gamma)
+
         label = result["label"].title()
         confidence = result["confidence"]
         positive = result["positive_probability"]
         negative = result["negative_probability"]
+        signed_score = positive if result["label"] == "positive" else -negative
 
         metric_cols = st.columns(3)
-        metric_cols[0].metric("Prediction", label)
+        metric_cols[0].metric("Review sentiment", label)
         metric_cols[1].metric("Confidence", f"{confidence:.1%}")
-        metric_cols[2].metric("Positive probability", f"{positive:.1%}")
+        metric_cols[2].metric("Stored score", f"{signed_score:+.3f}")
+        st.success("Review saved. Recommendations now use the updated per-movie average sentiment.")
 
         fig = px.bar(
             pd.DataFrame(
@@ -529,6 +612,16 @@ elif page == "Review Sentiment":
         fig.update_layout(height=360, showlegend=False, margin=dict(l=20, r=20, t=55, b=20))
         fig.update_yaxes(tickformat=".0%", range=[0, 1])
         st.plotly_chart(fig, use_container_width=True)
+
+    updated_reviews = load_user_reviews()
+    if not updated_reviews.empty:
+        st.subheader("Recent user reviews powering re-ranking")
+        recent = updated_reviews.sort_values("timestamp", ascending=False).head(10)
+        st.dataframe(
+            recent[["timestamp", "title", "sentiment_label", "sentiment_score", "confidence"]],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 elif page == "Taste Profile":
