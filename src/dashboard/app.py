@@ -527,19 +527,15 @@ def render_search_results(results: pd.DataFrame, prefix: str):
     columns = st.columns(3)
     for index, (_, row) in enumerate(results.iterrows()):
         with columns[index % 3]:
-            st.markdown(
-                f"""
-                <div class="search-result">
-                    <div class="movie-title">{row.get("title", "Unknown")}</div>
-                    <div class="movie-meta">{format_year(row.get("release_year"))} &middot; {row.get("director", "Unknown director")}</div>
-                    {movie_tags(row)}
-                    <div class="score-line">Audience score: <b>{row.get("vote_average", 0)}</b></div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if st.button("View movie", key=f"{prefix}_{int(row['movieId'])}"):
-                set_movie_page(int(row["movieId"]))
+            with st.container(border=True):
+                st.markdown(f"#### {row.get('title', 'Unknown')}")
+                st.caption(f"{format_year(row.get('release_year'))} · {row.get('director', 'Unknown director')}")
+                genres = parse_list(row.get("genres", []))
+                if genres:
+                    st.write(" · ".join(genres[:4]))
+                st.metric("Audience score", row.get("vote_average", 0))
+                if st.button("View movie", key=f"{prefix}_{int(row['movieId'])}"):
+                    set_movie_page(int(row["movieId"]))
 
 
 def render_review_form(movie: pd.Series, models: dict, gamma: float, key: str):
@@ -772,6 +768,17 @@ st.markdown(
     f'<p class="muted">Now watching as <b>{profile["name"]}</b> &middot; {profile["taste"]}</p>',
     unsafe_allow_html=True,
 )
+
+top_page = st.radio(
+    "Navigation",
+    pages,
+    index=pages.index(st.session_state["page"]) if st.session_state["page"] in pages else 0,
+    horizontal=True,
+    label_visibility="collapsed",
+)
+if top_page != st.session_state["page"]:
+    st.session_state["page"] = top_page
+    page = top_page
 
 global_query = st.text_input("Search movies", placeholder="Search by title, genre, director, or cast...")
 if global_query.strip():
