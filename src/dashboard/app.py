@@ -193,6 +193,34 @@ st.markdown(
         min-height: 120px;
         box-shadow: 0 8px 22px rgba(23, 33, 43, 0.05);
     }
+    .feedback-panel {
+        border: 1px solid rgba(45, 106, 106, 0.18);
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 0.95rem 1rem;
+        margin: 0.3rem 0 1rem 0;
+        box-shadow: 0 8px 22px rgba(23, 33, 43, 0.05);
+    }
+    .feedback-title {
+        color: var(--ink);
+        font-weight: 800;
+        margin-bottom: 0.15rem;
+    }
+    .feedback-copy {
+        color: var(--muted);
+        font-size: 0.92rem;
+        margin: 0;
+    }
+    .sentiment-chip {
+        display: inline-block;
+        border-radius: 999px;
+        background: #fff3dc;
+        color: #7a4d13;
+        padding: 0.22rem 0.55rem;
+        font-size: 0.78rem;
+        font-weight: 750;
+        margin-top: 0.55rem;
+    }
     .watch-card .movie-title {
         color: var(--ink);
     }
@@ -348,6 +376,12 @@ def update_sentiment_scores() -> pd.DataFrame:
     return scores
 
 
+def load_sentiment_scores() -> pd.DataFrame:
+    if SENTIMENT_SCORES_CSV.exists():
+        return pd.read_csv(SENTIMENT_SCORES_CSV)
+    return pd.DataFrame(columns=["movieId", "sentiment_score", "review_count"])
+
+
 def refresh_sentiment_reranker(models: dict, gamma: float) -> None:
     from sentiment import SentimentReRanker
 
@@ -371,6 +405,12 @@ def render_watch_shelf(watchlist: pd.DataFrame):
 
 
 def recommendation_cards(recs: pd.DataFrame):
+    scores_df = load_sentiment_scores()
+    review_counts = (
+        scores_df.set_index("movieId")["review_count"].to_dict()
+        if "review_count" in scores_df.columns and not scores_df.empty
+        else {}
+    )
     cards = ['<div class="card-grid">']
     for idx, (_, row) in enumerate(recs.iterrows()):
         year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
@@ -382,6 +422,12 @@ def recommendation_cards(recs: pd.DataFrame):
             if bool(row.get("sentiment_available", False))
             else "<b>not linked</b>"
         )
+        review_count = int(review_counts.get(int(row.get("movieId", -1)), 0))
+        review_badge = (
+            f'<span class="sentiment-chip">{review_count} audience review{"s" if review_count != 1 else ""}</span>'
+            if review_count
+            else '<span class="sentiment-chip">no submitted reviews yet</span>'
+        )
         explanation = row.get("explanation", "Recommended from this profile's watch history.")
         cards.append(
             f'<div class="movie-card">'
@@ -390,6 +436,7 @@ def recommendation_cards(recs: pd.DataFrame):
             f'<div class="movie-meta">{year} &middot; audience score {vote}</div>'
             f'<div class="score-line">Match score: <b>{score:.3f}</b></div>'
             f'<div class="score-line">Audience signal: {sentiment_text}</div>'
+            f'{review_badge}'
             f'<div class="reason-box">{explanation}</div>'
             f'</div>'
         )
@@ -478,11 +525,27 @@ st.markdown(
 
 if page == "For You":
     watchlist = profile_watchlist(profile, movies_df, ratings_df)
+    submitted_reviews = load_user_reviews()
+    sentiment_scores = load_sentiment_scores()
 
     st.subheader("Continue from this watch history")
     render_watch_shelf(watchlist)
 
     st.subheader("Recommended next")
+    st.markdown(
+        f"""
+        <div class="feedback-panel">
+            <div class="feedback-title">Audience feedback loop</div>
+            <p class="feedback-copy">
+                Recommendations start with collaborative and content signals. When users submit movie reviews,
+                Cine IQ classifies each review and folds the movie's average sentiment into the final ranking.
+            </p>
+            <span class="sentiment-chip">{len(submitted_reviews)} submitted reviews</span>
+            <span class="sentiment-chip">{len(sentiment_scores)} movies with sentiment</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     with st.spinner("Ranking movies for this profile..."):
         recs = generate_recommendations(models, profile, int(n_recs), alpha, gamma)
 
@@ -560,58 +623,75 @@ elif page == "Review a Movie":
     existing_reviews = load_user_reviews()
     movie_reviews = existing_reviews[existing_reviews["movieId"] == int(selected_movie["movieId"])]
 
-    if not movie_reviews.empty:
-        avg_sentiment = movie_reviews["sentiment_score"].mean()
-        metric_cols = st.columns(3)
-        metric_cols[0].metric("Submitted reviews", len(movie_reviews))
-        metric_cols[1].metric("Average sentiment", f"{avg_sentiment:+.3f}")
-        metric_cols[2].metric("Latest label", str(movie_reviews.iloc[-1]["sentiment_label"]).title())
-    else:
-        st.info("No user reviews have been submitted for this movie yet.")
-
-    review_text = st.text_area(
-        "Your review",
-        height=180,
-        placeholder="Write a real audience review for this selected movie...",
-    )
-
-    classifier = models.get("review_classifier")
-    if classifier is None:
-        st.warning("Review sentiment model is not trained yet. Run: python src/models/sentiment.py --train-review-classifier")
-    elif st.button("Submit review", type="primary", disabled=not review_text.strip()):
-        result = classifier.predict(review_text)
-        save_user_review(selected_movie, review_text.strip(), result)
-        refresh_sentiment_reranker(models, gamma)
-
-        label = result["label"].title()
-        confidence = result["confidence"]
-        positive = result["positive_probability"]
-        negative = result["negative_probability"]
-        signed_score = positive if result["label"] == "positive" else -negative
-
-        metric_cols = st.columns(3)
-        metric_cols[0].metric("Review sentiment", label)
-        metric_cols[1].metric("Confidence", f"{confidence:.1%}")
-        metric_cols[2].metric("Stored score", f"{signed_score:+.3f}")
-        st.success("Review saved. Recommendations now use the updated per-movie average sentiment.")
-
-        fig = px.bar(
-            pd.DataFrame(
-                [
-                    {"sentiment": "Positive", "probability": positive},
-                    {"sentiment": "Negative", "probability": negative},
-                ]
-            ),
-            x="sentiment",
-            y="probability",
-            color="sentiment",
-            color_discrete_map={"Positive": "#2d6a6a", "Negative": "#b85c4b"},
-            title="Sentiment probabilities",
-            labels={"probability": "Probability", "sentiment": ""},
+    left, right = st.columns([1, 1.35])
+    with left:
+        year = int(selected_movie["release_year"]) if pd.notna(selected_movie.get("release_year")) else "Unknown"
+        st.markdown(
+            f"""
+            <div class="movie-card">
+                <div class="section-label">Selected title</div>
+                <div class="movie-title">{selected_movie.get("title", "Unknown")}</div>
+                <div class="movie-meta">{year} &middot; audience score {selected_movie.get("vote_average", 0)}</div>
+                {movie_tags(selected_movie)}
+                <div class="reason-box">Reviews submitted here become the movie's sentiment signal for re-ranking.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        fig.update_layout(height=360, showlegend=False, margin=dict(l=20, r=20, t=55, b=20))
-        fig.update_yaxes(tickformat=".0%", range=[0, 1])
-        st.plotly_chart(fig, use_container_width=True)
+
+        if not movie_reviews.empty:
+            avg_sentiment = movie_reviews["sentiment_score"].mean()
+            metric_cols = st.columns(2)
+            metric_cols[0].metric("Reviews", len(movie_reviews))
+            metric_cols[1].metric("Avg sentiment", f"{avg_sentiment:+.3f}")
+            st.caption(f"Latest label: {str(movie_reviews.iloc[-1]['sentiment_label']).title()}")
+        else:
+            st.info("No submitted reviews for this movie yet.")
+
+    with right:
+        review_text = st.text_area(
+            "Your review",
+            height=190,
+            placeholder="Write a real audience review for this selected movie...",
+        )
+
+        classifier = models.get("review_classifier")
+        if classifier is None:
+            st.warning("Review sentiment model is not trained yet. Run: python src/models/sentiment.py --train-review-classifier")
+        elif st.button("Submit review and update ranking", type="primary", disabled=not review_text.strip()):
+            result = classifier.predict(review_text)
+            save_user_review(selected_movie, review_text.strip(), result)
+            refresh_sentiment_reranker(models, gamma)
+
+            label = result["label"].title()
+            confidence = result["confidence"]
+            positive = result["positive_probability"]
+            negative = result["negative_probability"]
+            signed_score = positive if result["label"] == "positive" else -negative
+
+            metric_cols = st.columns(3)
+            metric_cols[0].metric("Review sentiment", label)
+            metric_cols[1].metric("Confidence", f"{confidence:.1%}")
+            metric_cols[2].metric("Stored score", f"{signed_score:+.3f}")
+            st.success("Review saved. The per-movie average sentiment has been updated for recommendations.")
+
+            fig = px.bar(
+                pd.DataFrame(
+                    [
+                        {"sentiment": "Positive", "probability": positive},
+                        {"sentiment": "Negative", "probability": negative},
+                    ]
+                ),
+                x="sentiment",
+                y="probability",
+                color="sentiment",
+                color_discrete_map={"Positive": "#2d6a6a", "Negative": "#b85c4b"},
+                title="Classifier probabilities",
+                labels={"probability": "Probability", "sentiment": ""},
+            )
+            fig.update_layout(height=320, showlegend=False, margin=dict(l=20, r=20, t=55, b=20))
+            fig.update_yaxes(tickformat=".0%", range=[0, 1])
+            st.plotly_chart(fig, use_container_width=True)
 
     updated_reviews = load_user_reviews()
     if not updated_reviews.empty:
