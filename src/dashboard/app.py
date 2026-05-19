@@ -218,12 +218,19 @@ st.markdown(
 def load_models():
     from ensemble import HybridEnsemble
     from sentiment import SentimentReRanker
+    from sentiment import ReviewSentimentClassifier
     from content_based import ContentBasedFilter
     from explainer import Explainer
+
+    try:
+        review_classifier = ReviewSentimentClassifier.load()
+    except FileNotFoundError:
+        review_classifier = None
 
     return {
         "ensemble": HybridEnsemble(alpha=0.6, beta=0.4),
         "sentiment": SentimentReRanker(backend="vader", gamma=0.15),
+        "review_classifier": review_classifier,
         "cb": ContentBasedFilter.load(),
         "explainer": Explainer(use_lime=False),
     }
@@ -359,7 +366,7 @@ st.sidebar.caption(profile["taste"])
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Browse",
-    ["For You", "Discover Similar", "Taste Profile"],
+    ["For You", "Discover Similar", "Review Sentiment", "Taste Profile"],
 )
 
 st.sidebar.markdown("---")
@@ -473,6 +480,55 @@ elif page == "Discover Similar":
         use_container_width=True,
         hide_index=True,
     )
+
+
+elif page == "Review Sentiment":
+    st.subheader("Classify a movie review")
+    st.caption("Paste a review and Cine IQ will predict whether it reads positive or negative.")
+
+    sample_review = (
+        "The performances were excellent and the story stayed with me after the credits. "
+        "It is a thoughtful, beautifully made film."
+    )
+    review_text = st.text_area(
+        "Review text",
+        value=sample_review,
+        height=180,
+        placeholder="Write or paste a movie review...",
+    )
+
+    classifier = models.get("review_classifier")
+    if classifier is None:
+        st.warning("Review sentiment model is not trained yet. Run: python src/models/sentiment.py --train-review-classifier")
+    elif st.button("Analyze review", type="primary"):
+        result = classifier.predict(review_text)
+        label = result["label"].title()
+        confidence = result["confidence"]
+        positive = result["positive_probability"]
+        negative = result["negative_probability"]
+
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Prediction", label)
+        metric_cols[1].metric("Confidence", f"{confidence:.1%}")
+        metric_cols[2].metric("Positive probability", f"{positive:.1%}")
+
+        fig = px.bar(
+            pd.DataFrame(
+                [
+                    {"sentiment": "Positive", "probability": positive},
+                    {"sentiment": "Negative", "probability": negative},
+                ]
+            ),
+            x="sentiment",
+            y="probability",
+            color="sentiment",
+            color_discrete_map={"Positive": "#2d6a6a", "Negative": "#b85c4b"},
+            title="Sentiment probabilities",
+            labels={"probability": "Probability", "sentiment": ""},
+        )
+        fig.update_layout(height=360, showlegend=False, margin=dict(l=20, r=20, t=55, b=20))
+        fig.update_yaxes(tickformat=".0%", range=[0, 1])
+        st.plotly_chart(fig, use_container_width=True)
 
 
 elif page == "Taste Profile":

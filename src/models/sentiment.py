@@ -24,6 +24,7 @@ Usage
 """
 
 import logging
+import pickle
 from pathlib import Path
 
 import numpy as np
@@ -33,8 +34,13 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 log = logging.getLogger(__name__)
 
 ROOT          = Path(__file__).resolve().parents[2]
+RAW           = ROOT / "data" / "raw"
 PROCESSED     = ROOT / "data" / "processed"
+MODEL_DIR     = ROOT / "models" / "saved"
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 SENTIMENT_CSV = PROCESSED / "sentiment_scores.csv"
+RAW_IMDB_CSV  = RAW / "imdb" / "IMDB Dataset.csv"
+REVIEW_MODEL_PATH = MODEL_DIR / "review_sentiment.pkl"
 
 
 # ── VADER backend ──────────────────────────────────────────────────────────────
@@ -227,13 +233,135 @@ class SentimentReRanker:
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+class ReviewSentimentClassifier:
+    """
+    Classifies a single review as positive or negative.
+
+    Unlike the recommendation re-ranker, this model does not need movie titles or
+    IDs. It trains directly on IMDb review text and sentiment labels.
+    """
+
+    def __init__(self, pipeline=None):
+        self.pipeline = pipeline
+
+    def train(
+        self,
+        reviews_path: str | Path = RAW_IMDB_CSV,
+        test_size: float = 0.2,
+        max_features: int = 50_000,
+    ) -> dict:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import accuracy_score, classification_report
+        from sklearn.model_selection import train_test_split
+        from sklearn.pipeline import Pipeline
+
+        reviews_path = Path(reviews_path)
+        if not reviews_path.exists():
+            raise FileNotFoundError(f"Review dataset not found at {reviews_path}")
+
+        df = pd.read_csv(reviews_path)
+        df.columns = [c.lower().strip() for c in df.columns]
+        if "review" not in df.columns or "sentiment" not in df.columns:
+            raise ValueError("Review dataset must contain 'review' and 'sentiment' columns.")
+
+        df = df.dropna(subset=["review", "sentiment"]).copy()
+        df["label"] = df["sentiment"].str.lower().map({"negative": 0, "positive": 1})
+        df = df.dropna(subset=["label"])
+
+        x_train, x_test, y_train, y_test = train_test_split(
+            df["review"].astype(str),
+            df["label"].astype(int),
+            test_size=test_size,
+            random_state=42,
+            stratify=df["label"].astype(int),
+        )
+
+        self.pipeline = Pipeline(
+            steps=[
+                (
+                    "tfidf",
+                    TfidfVectorizer(
+                        max_features=max_features,
+                        ngram_range=(1, 2),
+                        min_df=2,
+                        stop_words="english",
+                        sublinear_tf=True,
+                    ),
+                ),
+                (
+                    "clf",
+                    LogisticRegression(
+                        max_iter=1000,
+                        class_weight="balanced",
+                        solver="liblinear",
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
+        self.pipeline.fit(x_train, y_train)
+        predictions = self.pipeline.predict(x_test)
+        accuracy = float(accuracy_score(y_test, predictions))
+        report = classification_report(y_test, predictions, target_names=["negative", "positive"])
+
+        self.save()
+        log.info(f"Review sentiment classifier trained. Accuracy={accuracy:.4f}")
+        return {
+            "accuracy": accuracy,
+            "n_train": int(len(x_train)),
+            "n_test": int(len(x_test)),
+            "classification_report": report,
+        }
+
+    def predict(self, review: str) -> dict:
+        if self.pipeline is None:
+            raise RuntimeError("Review sentiment classifier is not trained or loaded.")
+        probabilities = self.pipeline.predict_proba([review])[0]
+        positive_probability = float(probabilities[1])
+        negative_probability = float(probabilities[0])
+        label = "positive" if positive_probability >= negative_probability else "negative"
+        return {
+            "label": label,
+            "confidence": max(positive_probability, negative_probability),
+            "positive_probability": positive_probability,
+            "negative_probability": negative_probability,
+        }
+
+    def save(self, path: Path = REVIEW_MODEL_PATH) -> None:
+        with open(path, "wb") as f:
+            pickle.dump({"pipeline": self.pipeline}, f)
+        log.info(f"Review sentiment model saved -> {path}")
+
+    @classmethod
+    def load(cls, path: Path = REVIEW_MODEL_PATH) -> "ReviewSentimentClassifier":
+        if not path.exists():
+            raise FileNotFoundError(f"No review sentiment model at {path}. Train it first.")
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        return cls(pipeline=payload["pipeline"])
+
+
 def main():
     import argparse, json
     parser = argparse.ArgumentParser(description="Phase 5 — Sentiment Re-Ranker")
     parser.add_argument("--backend",      default="vader", choices=["vader", "distilbert"])
     parser.add_argument("--gamma",        type=float, default=0.15)
     parser.add_argument("--reviews-csv",  default=None, help="Path to raw reviews CSV for fresh scoring")
+    parser.add_argument("--train-review-classifier", action="store_true", help="Train IMDb positive/negative review classifier")
+    parser.add_argument("--classify-review", default=None, help="Classify a single review as positive or negative")
     args = parser.parse_args()
+
+    if args.train_review_classifier:
+        metrics = ReviewSentimentClassifier().train()
+        print(json.dumps({k: v for k, v in metrics.items() if k != "classification_report"}, indent=2))
+        print(metrics["classification_report"])
+        return
+
+    if args.classify_review:
+        result = ReviewSentimentClassifier.load().predict(args.classify_review)
+        print(json.dumps(result, indent=2))
+        return
 
     reranker = SentimentReRanker(backend=args.backend, gamma=args.gamma)
 
