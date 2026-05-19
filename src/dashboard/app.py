@@ -432,7 +432,7 @@ def movie_review_stats(movie_id: int) -> tuple[pd.DataFrame, float | None]:
 
 def set_movie_page(movie_id: int) -> None:
     st.session_state["selected_movie_id"] = int(movie_id)
-    st.session_state["page"] = "Movie"
+    st.session_state["page"] = "Search"
     st.rerun()
 
 
@@ -743,7 +743,9 @@ if st.sidebar.button("Switch profile"):
     st.session_state["signed_in"] = False
     st.rerun()
 
-pages = ["Home", "Search", "Movie", "My Profile", "Review"]
+pages = ["Home", "Search", "My Profile"]
+if st.session_state["page"] not in pages:
+    st.session_state["page"] = "Search"
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Navigate",
@@ -822,7 +824,7 @@ if page == "Home":
         st.warning("No recommendations are available for this profile yet.")
     else:
         recommendation_cards(recs)
-        st.caption("Open the Search or Movie page to inspect title details and user reviews.")
+        st.caption("Open Search to inspect title details and user reviews.")
 
         fig = px.bar(
             recs,
@@ -844,29 +846,8 @@ elif page == "Search":
     results = search_movies(movies_df, query, limit=12)
     st.caption(f"Showing {len(results)} titles from the full processed catalog.")
     render_search_results(results, "catalog")
-
-
-elif page == "Movie":
-    selected_movie = find_movie_by_id(movies_df, st.session_state.get("selected_movie_id"))
-    all_titles = movies_df["title"].dropna().sort_values().unique().tolist()
-    chosen_title = st.selectbox(
-        "Open a movie page",
-        all_titles,
-        index=all_titles.index(selected_movie["title"]) if selected_movie["title"] in all_titles else 0,
-    )
-    chosen_movie = movies_df[movies_df["title"] == chosen_title].iloc[0]
-    st.session_state["selected_movie_id"] = int(chosen_movie["movieId"])
-    render_movie_detail(chosen_movie, models, gamma)
-
-
-elif page == "Review":
-    st.subheader("Review a movie")
-    st.caption("Pick any title, write a review, and Cine IQ updates that movie's sentiment average for future rankings.")
-    query = st.text_input("Find a movie to review", placeholder="Search by title, director, cast, or genre...", key="review_search")
-    results = search_movies(movies_df, query, limit=6)
-    render_search_results(results, "review_search")
-    selected_movie = find_movie_by_id(movies_df, st.session_state.get("selected_movie_id"))
     st.markdown("---")
+    selected_movie = find_movie_by_id(movies_df, st.session_state.get("selected_movie_id"))
     render_movie_detail(selected_movie, models, gamma)
 
 

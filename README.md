@@ -2,7 +2,7 @@
 
 Cine IQ is an explainable movie recommendation web app built for the IIT Guwahati Coding Club Even Semester Project. It ranks movies with a weighted hybrid recommender, explains why each title was recommended, and lets users add real reviews that become an audience-sentiment signal for future rankings.
 
-The current app is designed as a movie recommendation website rather than a plain ML dashboard. It includes sign-in with demo viewer profiles, a searchable movie catalog, movie detail pages, user review submission, and a user profile page with taste analytics.
+The current app is designed as a movie recommendation website rather than a plain ML dashboard. It includes sign-in with demo viewer profiles, a searchable movie catalog with embedded movie detail pages and reviews, and a user profile page with taste analytics.
 
 ## Current Features
 
@@ -10,8 +10,8 @@ The current app is designed as a movie recommendation website rather than a plai
 | --- | --- |
 | Sign-in flow | Streamlit sign-in screen with demo viewer profiles backed by MovieLens user histories. |
 | Home recommendations | Personalized watch-history shelf and ranked recommendations. |
-| Search | Dedicated catalog search page for title, genre, director, and cast lookup. |
-| Movie pages | Overview, year, director, cast, genres, keywords, similar movies, user reviews, and review form. |
+| Search | Catalog search for title, genre, director, and cast lookup, with selected movie details shown on the same page. |
+| Movie details | Overview, year, director, cast, genres, keywords, similar movies, user reviews, and review form inside Search. |
 | User profile | Watch history, average rating, top genre, favorite decade, genre radar, decade preferences, director affinity, and actor affinity. |
 | Hybrid ranking | `HybridEnsemble` blends collaborative filtering and content-based scores. |
 | Collaborative filtering | Surprise SVD matrix factorization trained from MovieLens ratings. |
@@ -168,8 +168,8 @@ Suggested demo flow:
 
 1. Sign in as one of the demo viewers.
 2. Show the Home page recommendations and watch-history shelf.
-3. Open Search and find a movie.
-4. Open a Movie page and show overview, cast, metadata, similar movies, and user reviews.
+3. Open Search, find a movie, and show its detail section on the same page.
+4. Show overview, cast, metadata, similar movies, and user reviews.
 5. Submit a positive or negative review for that movie.
 6. Return to Home and explain that submitted reviews update the movie-level sentiment signal used in re-ranking.
 7. Open My Profile and show the taste analytics: genre radar, decade preference, director affinity, actor affinity, and watch history.
@@ -211,7 +211,7 @@ http://localhost:5000
 | Hybrid ensemble | Ranked recommendation quality and Precision@K during tuning. |
 | Review sentiment classifier | Accuracy on IMDb positive/negative review validation data. |
 | Sentiment re-ranker | Rank shifts when submitted reviews create positive or negative audience signals. |
-| Streamlit app | Sign-in, Search, Movie, Review, Home, and My Profile flows. |
+| Streamlit app | Sign-in, Home, Search with movie details/reviews, and My Profile flows. |
 | API | `/health`, `/recommend`, and `/similar` smoke tests. |
 
 ## Deliverables
