@@ -242,6 +242,65 @@ st.markdown(
         background: #ffffff;
         border-radius: 8px;
     }
+    .login-shell {
+        max-width: 760px;
+        margin: 4vh auto 0 auto;
+        border: 1px solid rgba(45, 106, 106, 0.18);
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 2rem;
+        box-shadow: 0 22px 52px rgba(23, 33, 43, 0.10);
+    }
+    .login-brand {
+        font-size: 2.75rem;
+        font-weight: 900;
+        color: var(--ink);
+        margin-bottom: 0.15rem;
+    }
+    .search-result {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 0.85rem;
+        min-height: 150px;
+        box-shadow: 0 8px 22px rgba(23, 33, 43, 0.05);
+    }
+    .detail-panel {
+        border: 1px solid rgba(45, 106, 106, 0.18);
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 1.2rem;
+        box-shadow: 0 14px 34px rgba(23, 33, 43, 0.07);
+    }
+    .detail-title {
+        color: var(--ink);
+        font-size: 2rem;
+        font-weight: 900;
+        margin-bottom: 0.25rem;
+    }
+    .review-item {
+        border-left: 4px solid var(--teal);
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 0.65rem;
+        box-shadow: 0 8px 20px rgba(23, 33, 43, 0.05);
+    }
+    .review-meta {
+        color: var(--muted);
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+    }
+    .mini-note {
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.55;
+    }
+    div[data-testid="stButton"] button {
+        border-radius: 7px;
+        font-weight: 750;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -321,6 +380,62 @@ def movie_tags(row: pd.Series, limit: int = 3) -> str:
     return "".join(f'<span class="pill">{genre}</span>' for genre in genres)
 
 
+def names_from_column(df: pd.DataFrame, column: str) -> list[str]:
+    names = []
+    if column not in df.columns:
+        return names
+    for values in df[column].dropna():
+        names.extend(parse_list(values))
+    return names
+
+
+def format_year(value) -> str:
+    return str(int(value)) if pd.notna(value) else "Unknown"
+
+
+def find_movie_by_id(movies: pd.DataFrame, movie_id: int | None) -> pd.Series:
+    if movie_id is not None:
+        match = movies[movies["movieId"].astype(int) == int(movie_id)]
+        if not match.empty:
+            return match.iloc[0]
+    return movies.sort_values("vote_average", ascending=False).iloc[0]
+
+
+def search_movies(movies: pd.DataFrame, query: str, limit: int = 9) -> pd.DataFrame:
+    if not query.strip():
+        return (
+            movies.sort_values(["vote_average", "release_year"], ascending=False)
+            .head(limit)
+            .copy()
+        )
+
+    needle = query.strip().lower()
+    searchable = (
+        movies["title"].fillna("")
+        + " "
+        + movies["director"].fillna("")
+        + " "
+        + movies["genres"].fillna("")
+        + " "
+        + movies["cast"].fillna("")
+    ).str.lower()
+    return movies[searchable.str.contains(needle, regex=False)].head(limit).copy()
+
+
+def movie_review_stats(movie_id: int) -> tuple[pd.DataFrame, float | None]:
+    reviews = load_user_reviews()
+    movie_reviews = reviews[reviews["movieId"].astype(str) == str(int(movie_id))].copy()
+    if movie_reviews.empty:
+        return movie_reviews, None
+    return movie_reviews.sort_values("timestamp", ascending=False), float(movie_reviews["sentiment_score"].mean())
+
+
+def set_movie_page(movie_id: int) -> None:
+    st.session_state["selected_movie_id"] = int(movie_id)
+    st.session_state["page"] = "Movie"
+    st.rerun()
+
+
 def load_user_reviews() -> pd.DataFrame:
     columns = [
         "timestamp",
@@ -391,7 +506,7 @@ def refresh_sentiment_reranker(models: dict, gamma: float) -> None:
 def render_watch_shelf(watchlist: pd.DataFrame):
     cards = ['<div class="card-grid">']
     for _, row in watchlist.iterrows():
-        year = int(row["release_year"]) if pd.notna(row.get("release_year")) else "Unknown"
+        year = format_year(row.get("release_year"))
         rating = row.get("rating", 0)
         cards.append(
             f'<div class="watch-card">'
@@ -402,6 +517,122 @@ def render_watch_shelf(watchlist: pd.DataFrame):
         )
     cards.append("</div>")
     st.markdown("".join(cards), unsafe_allow_html=True)
+
+
+def render_search_results(results: pd.DataFrame, prefix: str):
+    if results.empty:
+        st.info("No matching movies found in the catalog.")
+        return
+
+    columns = st.columns(3)
+    for index, (_, row) in enumerate(results.iterrows()):
+        with columns[index % 3]:
+            st.markdown(
+                f"""
+                <div class="search-result">
+                    <div class="movie-title">{row.get("title", "Unknown")}</div>
+                    <div class="movie-meta">{format_year(row.get("release_year"))} &middot; {row.get("director", "Unknown director")}</div>
+                    {movie_tags(row)}
+                    <div class="score-line">Audience score: <b>{row.get("vote_average", 0)}</b></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("View movie", key=f"{prefix}_{int(row['movieId'])}"):
+                set_movie_page(int(row["movieId"]))
+
+
+def render_review_form(movie: pd.Series, models: dict, gamma: float, key: str):
+    review_text = st.text_area(
+        "Your review",
+        height=170,
+        placeholder="Write what you thought after watching this movie...",
+        key=f"review_text_{key}",
+    )
+
+    classifier = models.get("review_classifier")
+    if classifier is None:
+        st.warning("Review sentiment model is not trained yet. Run: python src/models/sentiment.py --train-review-classifier")
+        return
+
+    if st.button("Submit review", type="primary", disabled=not review_text.strip(), key=f"submit_review_{key}"):
+        result = classifier.predict(review_text.strip())
+        save_user_review(movie, review_text.strip(), result)
+        refresh_sentiment_reranker(models, gamma)
+
+        signed_score = (
+            result["positive_probability"]
+            if result["label"] == "positive"
+            else -result["negative_probability"]
+        )
+        st.success(
+            f"Review saved as {result['label']} with {result['confidence']:.1%} confidence. "
+            f"Stored sentiment score: {signed_score:+.3f}."
+        )
+        st.rerun()
+
+
+def render_movie_detail(movie: pd.Series, models: dict, gamma: float):
+    movie_id = int(movie["movieId"])
+    movie_reviews, avg_sentiment = movie_review_stats(movie_id)
+    cast = parse_list(movie.get("cast", []))
+    keywords = parse_list(movie.get("keywords", []))
+
+    left, right = st.columns([1.45, 1])
+    with left:
+        st.markdown(
+            f"""
+            <div class="detail-panel">
+                <div class="section-label">Movie page</div>
+                <div class="detail-title">{movie.get("title", "Unknown")}</div>
+                <div class="movie-meta">{format_year(movie.get("release_year"))} &middot; Directed by {movie.get("director", "Unknown")}</div>
+                {movie_tags(movie, limit=6)}
+                <p class="mini-note">{movie.get("overview", "No overview available.")}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        info_cols = st.columns(4)
+        info_cols[0].metric("TMDb score", f"{movie.get('vote_average', 0)}")
+        info_cols[1].metric("User reviews", len(movie_reviews))
+        info_cols[2].metric("Avg sentiment", "New" if avg_sentiment is None else f"{avg_sentiment:+.3f}")
+        info_cols[3].metric("MovieLens ID", movie_id)
+
+    with right:
+        st.markdown("### Cast and Signals")
+        st.write(", ".join(cast[:6]) if cast else "Cast unavailable")
+        st.caption("Keywords")
+        st.write(", ".join(keywords[:10]) if keywords else "Keywords unavailable")
+
+    st.subheader("Recommended because this title is similar")
+    try:
+        similar = models["cb"].similar_movies(movie_id=movie_id, n=6)
+        render_search_results(similar, f"similar_{movie_id}")
+    except Exception as exc:
+        st.info(f"Similar movies are unavailable for this title: {exc}")
+
+    review_cols = st.columns([1, 1])
+    with review_cols[0]:
+        st.subheader("Leave a user review")
+        st.caption("This review updates the movie's audience sentiment signal used for re-ranking.")
+        render_review_form(movie, models, gamma, f"movie_{movie_id}")
+
+    with review_cols[1]:
+        st.subheader("User reviews")
+        if movie_reviews.empty:
+            st.info("No user reviews yet. Add the first one for this movie.")
+        else:
+            for _, review in movie_reviews.head(6).iterrows():
+                st.markdown(
+                    f"""
+                    <div class="review-item">
+                        <div class="review-meta">{review['timestamp']} &middot; {str(review['sentiment_label']).title()} &middot; {float(review['sentiment_score']):+.3f}</div>
+                        <div>{review['review']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 
 def recommendation_cards(recs: pd.DataFrame):
@@ -465,6 +696,316 @@ try:
 except Exception as exc:
     st.error(f"Could not load Cine IQ models: {exc}\nRun preprocessing and model training first.")
     st.stop()
+
+
+if "signed_in" not in st.session_state:
+    st.session_state["signed_in"] = False
+if "profile_name" not in st.session_state:
+    st.session_state["profile_name"] = profiles[0]["name"]
+if "page" not in st.session_state:
+    st.session_state["page"] = "Home"
+if "selected_movie_id" not in st.session_state:
+    st.session_state["selected_movie_id"] = int(movies_df.sort_values("vote_average", ascending=False).iloc[0]["movieId"])
+
+
+if not st.session_state["signed_in"]:
+    st.markdown(
+        """
+        <div class="login-shell">
+            <div class="login-brand">Cine IQ</div>
+            <p class="mini-note">
+                Sign in to open a demo viewer profile with watch history, recommendations,
+                movie pages, user reviews, and audience-sentiment re-ranking.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("signin_form"):
+        selected_profile_name = st.selectbox(
+            "Choose demo viewer",
+            [profile["name"] for profile in profiles],
+            format_func=lambda name: f"{name} - {next(item['taste'] for item in profiles if item['name'] == name)}",
+        )
+        submitted = st.form_submit_button("Sign in", type="primary")
+    if submitted:
+        st.session_state["profile_name"] = selected_profile_name
+        st.session_state["signed_in"] = True
+        st.session_state["page"] = "Home"
+        st.rerun()
+    st.stop()
+
+
+profile = next(item for item in profiles if item["name"] == st.session_state["profile_name"])
+
+st.sidebar.markdown("<div class='app-title'>Cine IQ</div>", unsafe_allow_html=True)
+st.sidebar.caption("Signed in")
+st.sidebar.markdown(f"**{profile['name']}**")
+st.sidebar.caption(profile["taste"])
+
+if st.sidebar.button("Switch profile"):
+    st.session_state["signed_in"] = False
+    st.rerun()
+
+pages = ["Home", "Search", "Movie", "My Profile", "Review"]
+st.sidebar.markdown("---")
+page = st.sidebar.radio(
+    "Navigate",
+    pages,
+    index=pages.index(st.session_state["page"]) if st.session_state["page"] in pages else 0,
+)
+st.session_state["page"] = page
+
+st.sidebar.markdown("---")
+n_recs = st.sidebar.slider("Number of picks", 3, 12, 6)
+alpha = st.sidebar.slider("Personalization strength", 0.1, 0.9, 0.6, 0.05)
+gamma = st.sidebar.slider("Audience sentiment boost", 0.0, 0.5, 0.15, 0.05)
+
+user_ratings = ratings_df[ratings_df["userId"] == profile["user_id"]]
+profile_watch_count = len(user_ratings)
+profile_avg = user_ratings["rating"].mean()
+submitted_reviews = load_user_reviews()
+sentiment_scores = load_sentiment_scores()
+
+st.markdown('<div class="app-title">Cine IQ</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<p class="muted">Now watching as <b>{profile["name"]}</b> &middot; {profile["taste"]}</p>',
+    unsafe_allow_html=True,
+)
+
+global_query = st.text_input("Search movies", placeholder="Search by title, genre, director, or cast...")
+if global_query.strip():
+    st.subheader("Search results")
+    render_search_results(search_movies(movies_df, global_query, limit=6), "global")
+    st.markdown("---")
+
+
+if page == "Home":
+    st.markdown(
+        f"""
+        <div class="hero">
+            <div class="hero-eyebrow">Personalized discovery</div>
+            <div class="hero-title">A streaming-style home for {profile["name"]}</div>
+            <p class="hero-copy">Cine IQ blends collaborative filtering, TF-IDF content similarity, SVD matrix factorization, and real user-review sentiment to rank what to watch next.</p>
+            <div class="stat-strip">
+                <div class="stat-card"><div class="stat-label">Watched titles</div><div class="stat-value">{profile_watch_count:,}</div></div>
+                <div class="stat-card"><div class="stat-label">Average rating</div><div class="stat-value">{profile_avg:.2f}/5</div></div>
+                <div class="stat-card"><div class="stat-label">Submitted reviews</div><div class="stat-value">{len(submitted_reviews):,}</div></div>
+                <div class="stat-card"><div class="stat-label">Movies with sentiment</div><div class="stat-value">{len(sentiment_scores):,}</div></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.subheader("Continue from this watch history")
+    render_watch_shelf(profile_watchlist(profile, movies_df, ratings_df))
+
+    st.subheader("Recommended next")
+    st.markdown(
+        """
+        <div class="feedback-panel">
+            <div class="feedback-title">How this row is ranked</div>
+            <p class="feedback-copy">
+                The base recommendation comes from collaborative, content, and SVD signals.
+                Reviews submitted in Cine IQ are classified as positive or negative and averaged by movie,
+                then used as the audience signal in the final re-ranking step.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.spinner("Ranking movies for this profile..."):
+        recs = generate_recommendations(models, profile, int(n_recs), alpha, gamma)
+
+    if recs.empty:
+        st.warning("No recommendations are available for this profile yet.")
+    else:
+        recommendation_cards(recs)
+        st.caption("Open the Search or Movie page to inspect title details and user reviews.")
+
+        fig = px.bar(
+            recs,
+            x="title",
+            y="final_score",
+            color="sentiment_score",
+            color_continuous_scale="RdYlGn",
+            title="Recommendation ranking",
+            labels={"final_score": "Match score", "title": "Movie"},
+        )
+        fig.update_layout(height=360, margin=dict(l=20, r=20, t=55, b=20))
+        fig.update_xaxes(tickangle=25)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+elif page == "Search":
+    st.subheader("Browse the movie catalog")
+    query = st.text_input("Catalog search", placeholder="Try Interstellar, Nolan, Animation, Crime...", key="catalog_search")
+    results = search_movies(movies_df, query, limit=12)
+    st.caption(f"Showing {len(results)} titles from the full processed catalog.")
+    render_search_results(results, "catalog")
+
+
+elif page == "Movie":
+    selected_movie = find_movie_by_id(movies_df, st.session_state.get("selected_movie_id"))
+    all_titles = movies_df["title"].dropna().sort_values().unique().tolist()
+    chosen_title = st.selectbox(
+        "Open a movie page",
+        all_titles,
+        index=all_titles.index(selected_movie["title"]) if selected_movie["title"] in all_titles else 0,
+    )
+    chosen_movie = movies_df[movies_df["title"] == chosen_title].iloc[0]
+    st.session_state["selected_movie_id"] = int(chosen_movie["movieId"])
+    render_movie_detail(chosen_movie, models, gamma)
+
+
+elif page == "Review":
+    st.subheader("Review a movie")
+    st.caption("Pick any title, write a review, and Cine IQ updates that movie's sentiment average for future rankings.")
+    query = st.text_input("Find a movie to review", placeholder="Search by title, director, cast, or genre...", key="review_search")
+    results = search_movies(movies_df, query, limit=6)
+    render_search_results(results, "review_search")
+    selected_movie = find_movie_by_id(movies_df, st.session_state.get("selected_movie_id"))
+    st.markdown("---")
+    render_movie_detail(selected_movie, models, gamma)
+
+
+elif page == "My Profile":
+    st.subheader(f"{profile['name']}'s user page")
+    rated_movies = movies_df[movies_df["movieId"].isin(user_ratings["movieId"])].copy()
+    rated_movies = rated_movies.merge(user_ratings[["movieId", "rating"]], on="movieId")
+
+    rated_movies["genres_list"] = rated_movies["genres"].apply(parse_list)
+    genre_rows = []
+    for _, rated in rated_movies.iterrows():
+        for genre in rated["genres_list"]:
+            genre_rows.append({"genre": genre, "rating": rated["rating"]})
+    genre_df = pd.DataFrame(genre_rows)
+
+    top_genre = "Mixed"
+    if not genre_df.empty:
+        top_genre = genre_df.groupby("genre")["rating"].mean().sort_values(ascending=False).index[0]
+
+    rated_movies["decade"] = (rated_movies["release_year"] // 10 * 10).astype("Int64")
+    decade_df = rated_movies.groupby("decade")["rating"].agg(["mean", "count"]).reset_index()
+    decade_df.columns = ["decade", "avg_rating", "count"]
+    decade_df = decade_df.dropna()
+    favorite_decade = "Unknown" if decade_df.empty else f"{int(decade_df.sort_values('avg_rating', ascending=False).iloc[0]['decade'])}s"
+
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Movies watched", f"{len(user_ratings):,}")
+    metric_cols[1].metric("Average rating", f"{user_ratings['rating'].mean():.2f}/5")
+    metric_cols[2].metric("Top genre", top_genre)
+    metric_cols[3].metric("Favorite decade", favorite_decade)
+    metric_cols[4].metric("Reviews submitted", f"{len(submitted_reviews):,}")
+
+    chart_cols = st.columns(2)
+    with chart_cols[0]:
+        if not genre_df.empty:
+            genre_avg = genre_df.groupby("genre")["rating"].mean().reset_index().nlargest(10, "rating")
+            fig = go.Figure(
+                go.Scatterpolar(
+                    r=genre_avg["rating"],
+                    theta=genre_avg["genre"],
+                    fill="toself",
+                    line_color="#2d6a6a",
+                )
+            )
+            fig.update_layout(
+                polar=dict(radialaxis=dict(range=[0, 5])),
+                title="Genre radar",
+                height=420,
+                margin=dict(l=20, r=20, t=55, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with chart_cols[1]:
+        fig = px.bar(
+            decade_df,
+            x="decade",
+            y="avg_rating",
+            color="count",
+            color_continuous_scale="Teal",
+            title="Decade preferences",
+            labels={"avg_rating": "Average rating", "decade": "Decade", "count": "Watched"},
+        )
+        fig.update_layout(height=420, margin=dict(l=20, r=20, t=55, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+    affinity_cols = st.columns(2)
+    with affinity_cols[0]:
+        director_df = (
+            rated_movies.dropna(subset=["director"])
+            .groupby("director")["rating"]
+            .agg(["mean", "count"])
+            .query("count >= 1")
+            .reset_index()
+            .sort_values(["mean", "count"], ascending=False)
+            .head(8)
+        )
+        fig = px.bar(
+            director_df,
+            x="mean",
+            y="director",
+            orientation="h",
+            color="count",
+            color_continuous_scale="Blues",
+            title="Director affinity",
+            labels={"mean": "Average rating", "director": "", "count": "Watched"},
+        )
+        fig.update_layout(yaxis={"autorange": "reversed"}, height=360, margin=dict(l=20, r=20, t=55, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with affinity_cols[1]:
+        actor_rows = []
+        for _, rated in rated_movies.iterrows():
+            for actor in parse_list(rated.get("cast", []))[:5]:
+                actor_rows.append({"actor": actor, "rating": rated["rating"]})
+        actor_df = pd.DataFrame(actor_rows)
+        if not actor_df.empty:
+            actor_affinity = (
+                actor_df.groupby("actor")["rating"]
+                .agg(["mean", "count"])
+                .reset_index()
+                .sort_values(["mean", "count"], ascending=False)
+                .head(8)
+            )
+            fig = px.bar(
+                actor_affinity,
+                x="mean",
+                y="actor",
+                orientation="h",
+                color="count",
+                color_continuous_scale="Sunset",
+                title="Actor affinity",
+                labels={"mean": "Average rating", "actor": "", "count": "Watched"},
+            )
+            fig.update_layout(yaxis={"autorange": "reversed"}, height=360, margin=dict(l=20, r=20, t=55, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Watch history and ratings")
+    top_movies = rated_movies.sort_values("rating", ascending=False).head(20)
+    st.dataframe(
+        top_movies[["title", "release_year", "director", "rating", "vote_average"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.subheader("Deliverable coverage")
+    st.markdown(
+        """
+        <div class="feedback-panel">
+            <div class="feedback-title">What this page demonstrates</div>
+            <p class="feedback-copy">
+                User watch history, ratings, genre radar, decade preferences, director affinity,
+                actor affinity, generated recommendations, and the submitted-review sentiment loop.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.stop()
 
 
 st.sidebar.markdown("<div class='app-title'>Cine IQ</div>", unsafe_allow_html=True)
