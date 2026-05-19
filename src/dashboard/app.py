@@ -998,20 +998,6 @@ elif page == "My Profile":
         hide_index=True,
     )
 
-    st.subheader("Deliverable coverage")
-    st.markdown(
-        """
-        <div class="feedback-panel">
-            <div class="feedback-title">What this page demonstrates</div>
-            <p class="feedback-copy">
-                User watch history, ratings, genre radar, decade preferences, director affinity,
-                actor affinity, generated recommendations, and the submitted-review sentiment loop.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 st.stop()
 
 
