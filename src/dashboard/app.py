@@ -747,14 +747,6 @@ pages = ["Home", "Search", "My Profile"]
 if st.session_state["page"] not in pages:
     st.session_state["page"] = "Search"
 st.sidebar.markdown("---")
-page = st.sidebar.radio(
-    "Navigate",
-    pages,
-    index=pages.index(st.session_state["page"]) if st.session_state["page"] in pages else 0,
-)
-st.session_state["page"] = page
-
-st.sidebar.markdown("---")
 n_recs = st.sidebar.slider("Number of picks", 3, 12, 6)
 alpha = st.sidebar.slider("Personalization strength", 0.1, 0.9, 0.6, 0.05)
 gamma = st.sidebar.slider("Audience sentiment boost", 0.0, 0.5, 0.15, 0.05)
@@ -777,10 +769,9 @@ top_page = st.radio(
     index=pages.index(st.session_state["page"]) if st.session_state["page"] in pages else 0,
     horizontal=True,
     label_visibility="collapsed",
+    key="page",
 )
-if top_page != st.session_state["page"]:
-    st.session_state["page"] = top_page
-    page = top_page
+page = top_page
 
 if page == "Home":
     st.markdown(
