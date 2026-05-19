@@ -780,13 +780,6 @@ if top_page != st.session_state["page"]:
     st.session_state["page"] = top_page
     page = top_page
 
-global_query = st.text_input("Search movies", placeholder="Search by title, genre, director, or cast...")
-if global_query.strip():
-    st.subheader("Search results")
-    render_search_results(search_movies(movies_df, global_query, limit=6), "global")
-    st.markdown("---")
-
-
 if page == "Home":
     st.markdown(
         f"""
