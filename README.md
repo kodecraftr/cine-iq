@@ -1,49 +1,59 @@
 # Cine IQ: Explainable Hybrid Movie Recommendation Engine
 
-Cine IQ is an open, explainable movie recommendation system built for the IIT Guwahati Coding Club Even Semester Project. It combines collaborative filtering, TF-IDF content similarity, weighted hybrid ranking, sentiment-aware re-ranking, and natural-language explanations so that recommendations are personalized and interpretable.
+Cine IQ is an explainable movie recommendation web app built for the IIT Guwahati Coding Club Even Semester Project. It ranks movies with a weighted hybrid recommender, explains why each title was recommended, and lets users add real reviews that become an audience-sentiment signal for future rankings.
 
-## Project Status
+The current app is designed as a movie recommendation website rather than a plain ML dashboard. It includes sign-in with demo viewer profiles, a searchable movie catalog, movie detail pages, user review submission, and a user profile page with taste analytics.
 
-The repository covers the core Cine IQ requirements:
+## Current Features
 
-| Requirement | Implementation |
+| Area | Implementation |
 | --- | --- |
-| Hybrid recommendation engine | `src/models/ensemble.py` blends SVD collaborative scores with TF-IDF content scores. |
-| Collaborative filtering and SVD | `src/models/collaborative.py` trains and serves a Surprise SVD model. |
-| Content-based filtering | `src/models/content_based.py` builds TF-IDF vectors from metadata soup and uses cosine similarity. |
-| Sentiment-aware re-ranking | `src/models/sentiment.py` supports VADER and DistilBERT review sentiment scoring. |
-| Explainability layer | `src/explainability/explainer.py` provides rule-based explanations and optional LIME signals. |
-| User taste dashboard | `src/dashboard/app.py` provides Streamlit pages for recommendations, similar movies, and taste profile charts. |
-| API serving | `src/api/main.py` exposes `/recommend`, `/similar`, and `/health` through FastAPI. |
-| Experiment tracking | Training and tuning scripts log metrics to MLflow. |
+| Sign-in flow | Streamlit sign-in screen with demo viewer profiles backed by MovieLens user histories. |
+| Home recommendations | Personalized watch-history shelf and ranked recommendations. |
+| Search | Dedicated catalog search page for title, genre, director, and cast lookup. |
+| Movie pages | Overview, year, director, cast, genres, keywords, similar movies, user reviews, and review form. |
+| User profile | Watch history, average rating, top genre, favorite decade, genre radar, decade preferences, director affinity, and actor affinity. |
+| Hybrid ranking | `HybridEnsemble` blends collaborative filtering and content-based scores. |
+| Collaborative filtering | Surprise SVD matrix factorization trained from MovieLens ratings. |
+| Content-based filtering | TF-IDF over metadata soup with cosine similarity. |
+| Review sentiment | IMDb 50K trains the positive/negative review classifier; user-submitted reviews create movie-level sentiment scores. |
+| Sentiment re-ranking | Average sentiment per movie is folded into final recommendations through `SentimentReRanker`. |
+| Explainability | Rule-based explanations describe genre, director, cast, keyword, and history-based reasons. |
+| API serving | FastAPI exposes health, recommendation, and similar-movie endpoints. |
 
-Important note: the large raw datasets and trained model pickle files are not committed because they are too large for normal GitHub hosting. Download the datasets listed below, run the pipeline, then train the models.
-
-## Architecture
+## Recommendation Workflow
 
 ```text
-Raw data
-  MovieLens 25M ratings + movies
-  TMDB metadata
-  IMDb review sentiment
+MovieLens ratings + TMDB metadata
         |
         v
-src/data/preprocess.py
-  cleaned ratings, merged movie metadata, content soup, sentiment scores
+Preprocessing
+  movies_merged.csv
+  ratings_clean.csv
         |
         v
-Model layer
-  CollaborativeFilter: Surprise SVD
-  ContentBasedFilter: TF-IDF + cosine similarity
-  HybridEnsemble: weighted blend of collaborative and content scores
-  SentimentReRanker: VADER/DistilBERT score adjustment
-  Explainer: rule templates and optional LIME terms
+Model training
+  SVD collaborative model
+  TF-IDF content model
+  IMDb-trained review sentiment classifier
         |
         v
-Serving layer
-  FastAPI endpoints
-  Streamlit dashboard
+Hybrid recommendation
+  collaborative score + content score
+        |
+        v
+User reviews in the app
+  review text -> positive/negative sentiment -> per-movie average sentiment
+        |
+        v
+Final ranking
+  hybrid score adjusted by audience sentiment
+        |
+        v
+Streamlit website + FastAPI endpoints
 ```
+
+Important distinction: the IMDb 50K dataset is used only to train the review sentiment classifier. Cine IQ does not use IMDb titles for movie re-ranking. Re-ranking uses reviews submitted inside the app for a specific movie, stored locally in `data/processed/user_reviews.csv`, then aggregated into `data/processed/sentiment_scores.csv`.
 
 ## Repository Structure
 
@@ -51,27 +61,28 @@ Serving layer
 cine-iq/
   src/
     api/main.py                    FastAPI service
-    dashboard/app.py               Streamlit dashboard
+    dashboard/app.py               Streamlit website
     data/preprocess.py             dataset cleaning and merging pipeline
     explainability/explainer.py    recommendation explanations
     models/collaborative.py        SVD collaborative model
     models/content_based.py        TF-IDF content model
     models/ensemble.py             hybrid recommender
-    models/sentiment.py            sentiment re-ranker
+    models/sentiment.py            review classifier and sentiment re-ranker
   notebooks/
     01_phase1_eda.ipynb
     02_phase2_collab.ipynb
   reports/
     cine_iq_report.md
-    cine_iq_report.pdf             generated report
-  scripts/
-    generate_report_pdf.py
+    cine_iq_report.pdf
   requirements.txt
+  README.md
 ```
+
+Large datasets, generated model files, submitted reviews, and local verification logs are ignored by Git. They are generated locally during setup and training.
 
 ## Datasets
 
-Download and place the files in this layout:
+Place the required files in this layout:
 
 ```text
 data/raw/
@@ -86,13 +97,11 @@ data/raw/
     IMDB Dataset.csv
 ```
 
-Sources:
-
-| Dataset | Purpose | Link |
+| Dataset | Purpose | Source |
 | --- | --- | --- |
-| MovieLens 25M | user ratings and movie IDs | https://grouplens.org/datasets/movielens/25m/ |
-| TMDB 5000 Movies + Credits | genres, cast, crew, overview, keywords | https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata |
-| IMDb 50K Reviews | sentiment model experimentation | https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews |
+| MovieLens 25M | Ratings, user histories, and movie IDs | https://grouplens.org/datasets/movielens/25m/ |
+| TMDB 5000 Movies + Credits | Movie metadata, cast, crew, overview, keywords | https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata |
+| IMDb 50K Reviews | Train positive/negative review sentiment classifier | https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews |
 
 ## Setup
 
@@ -105,18 +114,65 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Run the data and model pipeline:
+## Training From Scratch
+
+Run the full preprocessing and training workflow:
 
 ```bash
 python src/data/preprocess.py
-python src/models/collaborative.py --sample-frac 0.1
+python src/models/collaborative.py
 python src/models/content_based.py
-python src/models/ensemble.py --user-id 42 --n 10
-python src/models/sentiment.py
-python src/explainability/explainer.py --user-id 42 --no-lime
+python src/models/sentiment.py --train-review-classifier
+python src/models/ensemble.py --user-id 1 --n 10
+python src/explainability/explainer.py --user-id 1 --no-lime
 ```
 
-For full training, remove `--sample-frac 0.1` after confirming the quick run works.
+For a quick smoke test of SVD training, use a sample first:
+
+```bash
+python src/models/collaborative.py --sample-frac 0.1
+```
+
+For the final demo, train without `--sample-frac` so the app runs on the full processed data. The saved SVD model can be large because it stores the trained factorization for the full ratings matrix.
+
+Generated artifacts:
+
+```text
+data/processed/movies_merged.csv
+data/processed/ratings_clean.csv
+models/saved/svd_model.pkl
+models/saved/content_based.pkl
+models/saved/review_sentiment.pkl
+```
+
+When users submit reviews in the Streamlit app, these local files may also appear:
+
+```text
+data/processed/user_reviews.csv
+data/processed/sentiment_scores.csv
+```
+
+## Running the Streamlit App
+
+```bash
+streamlit run src/dashboard/app.py
+```
+
+Open the local Streamlit URL, usually:
+
+```text
+http://localhost:8501
+```
+
+Suggested demo flow:
+
+1. Sign in as one of the demo viewers.
+2. Show the Home page recommendations and watch-history shelf.
+3. Open Search and find a movie.
+4. Open a Movie page and show overview, cast, metadata, similar movies, and user reviews.
+5. Submit a positive or negative review for that movie.
+6. Return to Home and explain that submitted reviews update the movie-level sentiment signal used in re-ranking.
+7. Open My Profile and show the taste analytics: genre radar, decade preference, director affinity, actor affinity, and watch history.
 
 ## Running the API
 
@@ -128,17 +184,9 @@ Example requests:
 
 ```bash
 curl "http://localhost:8000/health"
-curl "http://localhost:8000/recommend?user_id=42&n=10"
-curl "http://localhost:8000/similar?movie_id=238&n=10"
+curl "http://localhost:8000/recommend?user_id=1&n=10"
+curl "http://localhost:8000/similar?movie_id=1&n=10"
 ```
-
-## Running the Dashboard
-
-```bash
-streamlit run src/dashboard/app.py
-```
-
-Open the Streamlit URL, usually `http://localhost:8501`.
 
 ## MLflow Tracking
 
@@ -148,28 +196,35 @@ The collaborative and ensemble scripts log metrics and parameters to MLflow:
 mlflow ui
 ```
 
-Then open `http://localhost:5000`.
+Then open:
 
-## Evaluation Targets
+```text
+http://localhost:5000
+```
 
-| Component | Metric |
+## Evaluation
+
+| Component | Metric or check |
 | --- | --- |
-| SVD collaborative model | RMSE and MAE on held-out MovieLens ratings |
-| Hybrid ensemble | Precision@10 during weight tuning |
-| Sentiment re-ranker | rank shifts and final score changes |
-| Dashboard/API | smoke tests for model loading and endpoint responses |
+| SVD collaborative model | RMSE and MAE on held-out MovieLens ratings. |
+| Content-based model | Similarity sanity checks for known movies. |
+| Hybrid ensemble | Ranked recommendation quality and Precision@K during tuning. |
+| Review sentiment classifier | Accuracy on IMDb positive/negative review validation data. |
+| Sentiment re-ranker | Rank shifts when submitted reviews create positive or negative audience signals. |
+| Streamlit app | Sign-in, Search, Movie, Review, Home, and My Profile flows. |
+| API | `/health`, `/recommend`, and `/similar` smoke tests. |
 
 ## Deliverables
 
-| Deliverable | File or link |
+| Deliverable | Status |
 | --- | --- |
-| Public GitHub codebase | Push this repository to a public GitHub repo after committing the local changes. |
-| Demo video | Record the dashboard/API flow and upload it to YouTube or Google Drive. |
-| Report | `reports/cine_iq_report.pdf` and `reports/cine_iq_report.md` |
+| Public GitHub codebase | This repository contains the source code and README. |
+| Demo video | Record the Streamlit flow above and upload to YouTube or Google Drive. |
+| Report | See `reports/cine_iq_report.md` and `reports/cine_iq_report.pdf`. |
 
 ## Known Limitations
 
-- Raw MovieLens/TMDB/IMDb datasets are not included in Git because they are large and externally licensed.
-- Saved model files are generated locally under `models/saved/` after training.
-- The common IMDb 50K review dataset does not reliably include movie IDs, so title-level sentiment joins are best-effort unless a review dataset with stable movie IDs is used.
-- Full MovieLens 25M training can be slow on CPU. Use `--sample-frac` for quick checks and full data for final metrics.
+- Raw datasets and saved model files are not committed because they are large and externally licensed.
+- Full MovieLens 25M SVD training can take time on CPU and produces a large local model file.
+- User-submitted reviews are stored locally in CSV files for the demo; a production app would use a database and real authentication.
+- The app uses demo viewer profiles derived from available MovieLens users, not real account registration.
